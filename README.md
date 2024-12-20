@@ -1,6 +1,10 @@
 # PetGAN
 
-**BibTeX Citation:**
+A simple GAN for generating images of pets (like dogs and cats), WIP.
+
+## BibTeX Citation:
+If you use the Oxford-IIIT Pet Dataset in your work, please cite it as follows:
+
 ```bibtex
 @inproceedings{Parkhi2012,
   author    = {Omkar M Parkhi and Andrea Vedaldi and Andrew Zisserman and C. V. Jawahar},
