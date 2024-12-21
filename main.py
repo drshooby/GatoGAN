@@ -128,7 +128,10 @@ Training the GAN with the given parameters:
     - batch_size: batch size for training
     - z_dim: dimension of the latent vector for generator
 '''
-def train_gan(device, epochs, train_loader, g, d, optim_g, optim_d, criterion, batch_size, z_dim, save_interval=100) -> None:
+
+
+def train_gan(device, epochs, train_loader, g, d, optim_g, optim_d, criterion, batch_size, z_dim,
+              save_interval=100) -> None:
     for epoch in range(epochs):
         # progress bar
         epoch_bar = tqdm(train_loader, desc=f'Epoch [{epoch + 1}/{epochs}]', ncols=100)
@@ -163,8 +166,11 @@ def train_gan(device, epochs, train_loader, g, d, optim_g, optim_d, criterion, b
             Calculate total discriminator loss and update weights:
             '''
             d_loss = d_loss_real + d_loss_fake
-            d_loss.backward()
-            optim_d.step()
+
+            # Update discriminator every other step
+            if i % 2 == 0:  # Update discriminator every other batch
+                d_loss.backward()
+                optim_d.step()
 
             '''
             Train generator:
@@ -196,11 +202,18 @@ def parse_args():
     return parser.parse_args()
 
 if __name__ == '__main__':
-
     args = parse_args()
 
     # device and checkpoint setup
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if torch.cuda.is_available():
+        print("Using cuda.")
+        device = torch.device("cuda")
+    elif torch.backends.mps.is_available():
+        print("Using mac mps.")
+        device = torch.device("mps")
+    else:
+        print("Using cpu.")
+        device = torch.device("cpu")
     create_checkpoints_folder()
 
     # parameter config
@@ -221,8 +234,6 @@ if __name__ == '__main__':
     # try to load checkpoint
     if load_checkpoint(args.checkpoint, g, d, optim_g, optim_d):
         tqdm.write(f"Checkpoint {args.checkpoint} loaded successfully!")
-    else:
-        tqdm.write(f"Checkpoint {args.checkpoint} not found. Training from scratch.")
 
     # random noise vector for generator
     z = torch.randn(config['batch_size'], config['z_dim'], 1, 1).to(device)
