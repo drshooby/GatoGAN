@@ -1,7 +1,7 @@
 import torch
 
 class Generator(torch.nn.Module):
-    def __init__(self, z):
+    def __init__(self, z=128):
         super(Generator, self).__init__()
         self.net = torch.nn.Sequential(
             torch.nn.ConvTranspose2d(z, 2048, kernel_size=4, stride=1, padding=0), # 2048 features
