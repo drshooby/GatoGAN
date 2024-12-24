@@ -1,4 +1,4 @@
-# PetGAN
+# GatoGAN
 
 A simple GAN for generating images of cats, WIP.
 
