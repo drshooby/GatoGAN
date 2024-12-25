@@ -13,26 +13,23 @@ import matplotlib.pyplot as plt
 from discriminator import Discriminator
 from generator import Generator
 
+LATENT_DIMENSION_SIZE = 128
+IMG_SIZE = 128
+
 '''
 Get dataloader for training and testing images:
     - root: root directory of the dataset (train, test, etc.)
     - size: size of the images (128x128)
     - batch_size: batch size for training
 '''
-def get_dataloader(root, size, batch_size, num_workers=4) -> DataLoader:
+def get_dataloader(root, size, batch_size) -> DataLoader:
     transform = transforms.Compose([
         transforms.Resize((size, size)),
-        transforms.RandomHorizontalFlip(p=0.5),
-        transforms.RandomRotation(degrees=15),
-        transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
-        transforms.RandomAffine(degrees=0, translate=(0.1, 0.1)),
-        transforms.RandomCrop(size=(size, size), padding=4),
-        transforms.RandomPerspective(distortion_scale=0.2, p=0.5),
         transforms.ToTensor(),
         transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
     ])
     dataset = ImageFolder(root=root, transform=transform)
-    return DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers, drop_last=True)
+    return DataLoader(dataset, batch_size=batch_size, shuffle=True, drop_last=True, num_workers=6, pin_memory=True)
 
 '''
 Create directory for checkpoints if it doesn't exist:
@@ -106,7 +103,7 @@ def generate_img(device, g) -> None:
     g.to(device)
 
     # random latent vector
-    z = torch.randn(1, 128, 1, 1).to(device)
+    z = torch.randn(1, LATENT_DIMENSION_SIZE, 1, 1).to(device)
 
     # generate an image
     with torch.no_grad():
@@ -134,10 +131,7 @@ Training the GAN with the given parameters:
     - batch_size: batch size for training
     - z_dim: dimension of the latent vector for generator
 '''
-
-
-def train_gan(device, epochs, train_loader, g, d, optim_g, optim_d, criterion, batch_size, z_dim,
-              save_interval=100) -> None:
+def train_gan(device, epochs, train_loader, g, d, optim_g, optim_d, criterion, batch_size, z_dim, save_interval=50) -> None:
     for epoch in range(epochs):
         # progress bar
         epoch_bar = tqdm(train_loader, desc=f'Epoch [{epoch + 1}/{epochs}]', ncols=100)
@@ -166,11 +160,8 @@ def train_gan(device, epochs, train_loader, g, d, optim_g, optim_d, criterion, b
             Calculate total discriminator loss and update weights:
             '''
             d_loss = d_loss_real + d_loss_fake
-
-            # Update discriminator every other step
-            if i % 2 == 0:  # Update discriminator every other batch
-                d_loss.backward()
-                optim_d.step()
+            d_loss.backward()
+            optim_d.step()
 
             '''
             Train generator:
@@ -182,8 +173,8 @@ def train_gan(device, epochs, train_loader, g, d, optim_g, optim_d, criterion, b
             optim_g.step()
 
             # update progress bar
-            epoch_bar.update(1)
             epoch_bar.set_postfix(d_loss=d_loss.item(), g_loss=g_loss.item())
+            epoch_bar.update(1)
 
         if epoch != 0 and epoch % save_interval == 0:
             save_checkpoint(g, d, optim_g, optim_d, filename=f'checkpoint_{epoch}.pt')
@@ -195,69 +186,47 @@ def train_gan(device, epochs, train_loader, g, d, optim_g, optim_d, criterion, b
 def parse_args():
     parser = argparse.ArgumentParser(description='Train a GAN with customizable parameters.')
     parser.add_argument('--batch_size', type=int, default=128, help='Batch size for training.')
-    parser.add_argument('--lr_g', type=float, default=0.0002, help='Learning rate for the generator.')
-    parser.add_argument('--new_lr_g', type=float, default=None, help='New learning rate for the generator.')
     parser.add_argument('--lr_d', type=float, default=0.0001, help='Learning rate for the discriminator.')
-    parser.add_argument('--new_lr_d', type=float, default=None, help='New learning rate for the discriminator.')
-    parser.add_argument('--epochs', type=int, default=1500, help='Number of training epochs.')
-    parser.add_argument('--save_interval', type=int, default=100, help='Save checkpoint every n epochs.')
-    parser.add_argument('--n_workers', type=int, default=4, help='Do not save checkpoint.')
-    parser.add_argument('--load_checkpoint', type=str, default='checkpoints/final_checkpoint.pt', help='Checkpoint filename to load, not necessary.')
+    parser.add_argument('--lr_g', type=float, default=0.0002, help='Learning rate for the generator.')
+    parser.add_argument('--epochs', type=int, default=2000, help='Number of training epochs.')
+    parser.add_argument('--checkpoint', type=str, default='checkpoints/final_checkpoint.pt', help='Checkpoint filename to load, not necessary.')
     return parser.parse_args()
 
 if __name__ == '__main__':
+
     args = parse_args()
 
     # device and checkpoint setup
-    if torch.cuda.is_available():
-        print("Using cuda.")
-        device = torch.device("cuda")
-    elif torch.backends.mps.is_available():
-        print("Using mac mps.")
-        device = torch.device("mps")
-    else:
-        print("Using cpu.")
-        device = torch.device("cpu")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     create_checkpoints_folder()
 
     # parameter config
     config = {
         'batch_size': args.batch_size,
-        'z_dim': 128,
-        'lr_g': args.lr_g,
+        'z_dim': LATENT_DIMENSION_SIZE,
         'lr_d': args.lr_d,
-        'new_lr_g': args.new_lr_g,
-        'new_lr_d': args.new_lr_d,
+        'lr_g': args.lr_g,
         'epochs': args.epochs,
-        'n_workers': args.n_workers,
     }
 
     # create models and optimizers (on successful load these will be overwritten)
-    g = Generator()
-    g.to(device)
-    d = Discriminator()
-    d.to(device)
+    g = Generator().to(device)
+    d = Discriminator().to(device)
     optim_g = torch.optim.Adam(g.parameters(), lr=config['lr_g'])
     optim_d = torch.optim.Adam(d.parameters(), lr=config['lr_d'])
 
     # try to load checkpoint
-    if load_checkpoint(args.load_checkpoint, g, d, optim_g, optim_d, new_lr_g=args.new_lr_g, new_lr_d=args.new_lr_d):
-        tqdm.write(f"Checkpoint {args.load_checkpoint} loaded successfully!")
-
-    # random noise vector for generator
-    z = torch.randn(config['batch_size'], config['z_dim'], 1, 1).to(device)
+    if load_checkpoint(args.checkpoint, g, d, optim_g, optim_d):
+        tqdm.write(f"Checkpoint {args.checkpoint} loaded successfully!")
 
     # setup loss function
     criterion = torch.nn.BCELoss()
 
     # setup data loader
-    train_loader = get_dataloader(root='train',
-                                  size=128,
-                                  batch_size=config['batch_size'],
-                                  num_workers=config['n_workers'])
+    train_loader = get_dataloader('train', size=IMG_SIZE, batch_size=config['batch_size'])
 
     # do training
-    train_gan(device=device,
+    train_gan(device,
             epochs=config['epochs'],
             train_loader=train_loader,
             g=g,
