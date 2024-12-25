@@ -12,21 +12,19 @@ Splits the dataset into training and test sets.
 '''
 
 def split_dataset():
-    image_folder = 'archive'
+    image_folder = 'archive' # update to wherever images are being pulled from
     train_folder = 'train'
     test_folder = 'test'
 
     os.makedirs(train_folder, exist_ok=True)
     os.makedirs(test_folder, exist_ok=True)
 
-    # Collect all the .jpg files in the nested directories
     image_files = []
     for root, dirs, files in os.walk(image_folder):
         for file in files:
-            if file.endswith('.jpg'):  # Only include .jpg files
+            if file.endswith('.jpg'):
                 image_files.append(os.path.join(root, file))
 
-    # Shuffle the files to ensure random splitting
     random.shuffle(image_files)
 
     # 80/20 split
@@ -34,7 +32,6 @@ def split_dataset():
     train_files = image_files[:train_size]
     test_files = image_files[train_size:]
 
-    # Move files to the respective folders
     for train_file in train_files:
         shutil.move(train_file, os.path.join(train_folder, os.path.basename(train_file)))
 
